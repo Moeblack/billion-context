@@ -3330,7 +3330,7 @@ if (d.keepalive) kv(parts, t("det.keepalive"), d.keepalive.tierLabel + " · " + 
                 ptState.className = "badge ok";
                 ptState.textContent = t("cfg.pt_on");
                 ptSource.textContent = pt.source === "env" ? t("sys.pt_env") : t("sys.pt_file");
-                clearPt.hidden = pt.source !== "env";
+                clearPt.hidden = pt.source !== "file";
             } else {
                 ptState.className = "badge disk";
                 ptState.textContent = t("cfg.pt_off");
