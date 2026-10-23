@@ -58,6 +58,7 @@
 import { execFileSync, spawn } from "node:child_process";
 import { LIVE_FILES } from "./live-files.mjs";
 import { classifyPhaseFailure, describeRetryOutcome } from "./ci-failure-shapes.mjs";
+import { ensurePretestBuild } from "./ci-pretest-cache.mjs";
 import { readdirSync, readFileSync } from "node:fs";
 import { freemem, loadavg, totalmem } from "node:os";
 import { join } from "node:path";
@@ -156,14 +157,21 @@ if (shard) {
     );
 }
 
-// Parity with the old `npm test` step: its pretest hook builds kernel/ and
-// pi-subagents/ dist bundles that the suites import. On Windows npm is a .cmd
-// batch file, which CreateProcess cannot exec directly (EINVAL) — route it
-// through cmd.exe via shell:true; the args are fixed literals, so there is no
-// quoting surface.
-const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
-console.log("[ci-tests] pretest (kernel + pi-subagents build)");
-execFileSync(npmCmd, ["run", "pretest"], { cwd: root, stdio: "inherit", shell: process.platform === "win32" });
+// Parity with the old `npm test` step: its pretest hook gated the suite lock
+// and built kernel/ + pi-subagents/ dist bundles that the suites import. The
+// builds are now content-hash cached (scripts/ci-pretest-cache.mjs): a dist
+// whose marker matches the live source hash is reused instead of rebuilt
+// (~6 min saved per Windows leg); any mismatch rebuilds for real, so a
+// stale/foreign actions/cache restore can never be trusted as fresh. On
+// Windows npm is a .cmd batch file, which CreateProcess cannot exec directly
+// (EINVAL) — ensurePretestBuild routes it through cmd.exe via shell:true with
+// fixed-literal args, so there is no quoting surface (same contract as
+// before).
+console.log("[ci-tests] pretest (suite-lock gate + cached kernel/pi-subagents builds)");
+execFileSync(process.execPath, [join(root, "scripts", "test-suite-lock.mjs"), "gate"], {
+    stdio: "inherit",
+});
+for (const pkg of ["kernel", "pi-subagents"]) ensurePretestBuild(pkg);
 
 // Loader chain the suites depend on (storage-baseline preload, #2671/#2803,
 // then tsx). Shared by the main phase and the isolated diagnostic re-run so
