@@ -272,6 +272,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm install --ignore-scripts --no-fund --no-audit
+      # Since the in-repo kernel (#2092), --ignore-scripts leaves kernel/ and
+      # pi-subagents/ unbuilt, and these suites reach acp-kernel/dist through
+      # src/storage -> src/config.ts (#4177). The main test job gets this build
+      # from scripts/run-ci-tests.mjs' pretest parity step; mirror it here.
+      - run: npm --prefix kernel run build && npm --prefix pi-subagents run build
       - run: node --import tsx --test tests/storage-backend-contract.test.ts tests/storage-backend-knob.test.ts
         env:
           BILI_MYSQL_TEST_DSN: mysql://root:bili-test-root@127.0.0.1:3306/bili
