@@ -1,7 +1,7 @@
 import http from "node:http";
 import type { CompressionCore, Config, CoreMessage, NudgeDecision, PackSurface, Prompts } from "acp-kernel";
 import { renderNudgeText, viableRanges } from "acp-kernel";
-import { coreToGoogle, googleToCore, normalizeGoogleUserPartOrder, type BiliMessage, type GoogleContent, type GoogleRequestBody, type GoogleSystemInstruction, type GoogleTool } from "acp-kernel/wire";
+import { coreToGoogle, googleToCore, type BiliMessage, type GoogleContent, type GoogleRequestBody, type GoogleSystemInstruction, type GoogleTool } from "acp-kernel/wire";
 import type { ProxyOptions } from "../config.js";
 import { currentCalibrationFactor } from "../util.js";
 import { diagNudge, diagTagSummary, deriveTitle, effectiveTokenCount, imageBillingFor, imageReserveFor, imageTokenCapFor, isAutoInjectedNotification, reapOrphansLogged, resolveKnownOutputCeiling, runNudgeDecision, stripKernelSummaries, usageGradeInputBaseline, type Prepared } from "../server.js";
@@ -31,20 +31,7 @@ import { estimateCoreMessages } from "../preflight.js";
 import { effectiveAbsorbBlock } from "./prepare-responses.js";
 import { injectGoogleTool, injectTool } from "./inject.js";
 import { nudgeOn, resolveLaneDecisions, surfaceOffDetail } from "./lane-decisions.js";
-
-function appendGoogleNudge(contents: GoogleContent[], text: string): GoogleContent[] {
-    const last = contents[contents.length - 1];
-    if (last && (last.role ?? "user") !== "model") {
-        const parts = Array.isArray(last.parts) ? last.parts : [];
-        // #3159: a plain-text tail after a functionResponse part 400s on
-        // Vertex — normalize so the new text leads.
-        return [
-            ...contents.slice(0, -1),
-            { ...last, parts: normalizeGoogleUserPartOrder([...parts, { text }]) },
-        ];
-    }
-    return [...contents, { role: "user", parts: [{ text }] }];
-}
+import { appendGoogleUserText } from "../wire-body.js";
 
 /** Gemini native wire (`POST /v1beta/models/<model>:generateContent|
  *  :streamGenerateContent`): the OpenAI branch's twin — hoist the system
@@ -289,7 +276,7 @@ export async function prepareGoogle(
             toolsOut = injectGoogleTool(parsed.tools, [...(absorbActive ? [absorbTools.google] : []), ...(rulesActive ? [RULE_TOOL_GOOGLE] : []), ...(ccrEnabled(session) ? [retrieveToolsFor(retrieveToolName(session)).google] : []), ...(imageRescaleToolArmed(session) ? [READ_ORIGINAL_IMAGE_TOOL_GOOGLE] : [])], surface?.toolPrompts, ccrEnabled(session), externalSummaryEnabled(config));
         }
         if (sysNotes.length > 0) {
-            rebuiltContents = appendGoogleNudge(rebuiltContents, sysNotes.join("\n\n---\n\n"));
+            rebuiltContents = appendGoogleUserText(rebuiltContents, sysNotes.join("\n\n---\n\n"));
         }
         if (willInjectNudge && turn.nudge) {
             // #2228: model-decided timing (see prepareAnthropic for the policy):
@@ -302,7 +289,7 @@ export async function prepareGoogle(
                     const rendered = renderNudgeText(turn.nudge, prompts, surface?.nudgeSections, "google");
                     const renderedWithPayload = rendered.text;
                     if (rendered.text) {
-                        rebuiltContents = appendGoogleNudge(rebuiltContents, withMarkerIntegrityNote(withFirstSightDrain(renderedWithPayload, turn.nudge.reason, externalSummaryEnabled(config)), visibilityMarkers));
+                        rebuiltContents = appendGoogleUserText(rebuiltContents, withMarkerIntegrityNote(withFirstSightDrain(renderedWithPayload, turn.nudge.reason, externalSummaryEnabled(config)), visibilityMarkers));
                         nudgeOutcome = "injected";
                     } else {
                         nudgeOutcome = "skipped";
@@ -312,13 +299,13 @@ export async function prepareGoogle(
                 }
             } else if (useDecide) {
                 const ranges = turn.nudge.compressibleRanges ?? [];
-                const sideBody: Record<string, unknown> = { ...parsed, contents: [...rebuiltContents, { role: "user", parts: [{ text: buildDecisionPrompt(ranges) }] }], tools: toolsOut, systemInstruction, generationConfig: { ...(parsed.generationConfig ?? {}), maxOutputTokens: decide.maxTokens } };
+                const sideBody: Record<string, unknown> = { ...parsed, contents: appendGoogleUserText(rebuiltContents, buildDecisionPrompt(ranges)), tools: toolsOut, systemInstruction, generationConfig: { ...(parsed.generationConfig ?? {}), maxOutputTokens: decide.maxTokens } };
                 stripDecisionReasoningFields("google", sideBody);
                 const outcome = await runNudgeDecision({ req, opts, protocol: "google", sideBody, session, log });
                 if (outcome.kind === "yes") {
                     const span = resolveDecisionRange(outcome, ranges);
                     if (span) {
-                        rebuiltContents = appendGoogleNudge(rebuiltContents, withMarkerIntegrityNote(withFirstSightDrain(buildDirectiveText(span.startRef, span.endRef, outcome.topic), turn.nudge.reason, externalSummaryEnabled(config)), visibilityMarkers));
+                        rebuiltContents = appendGoogleUserText(rebuiltContents, withMarkerIntegrityNote(withFirstSightDrain(buildDirectiveText(span.startRef, span.endRef, outcome.topic), turn.nudge.reason, externalSummaryEnabled(config)), visibilityMarkers));
                         nudgeOutcome = "injected";
                     } else {
                         nudgeOutcome = "skipped";
@@ -334,7 +321,7 @@ export async function prepareGoogle(
                     const rendered = renderNudgeText(turn.nudge, prompts, surface?.nudgeSections, "google");
                     const renderedWithPayload = rendered.text;
                     if (rendered.text) {
-                        rebuiltContents = appendGoogleNudge(rebuiltContents, withMarkerIntegrityNote(withFirstSightDrain(renderedWithPayload, turn.nudge.reason, externalSummaryEnabled(config)), visibilityMarkers));
+                        rebuiltContents = appendGoogleUserText(rebuiltContents, withMarkerIntegrityNote(withFirstSightDrain(renderedWithPayload, turn.nudge.reason, externalSummaryEnabled(config)), visibilityMarkers));
                         nudgeOutcome = "injected";
                     } else {
                         nudgeOutcome = "skipped";
