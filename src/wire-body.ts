@@ -1,5 +1,16 @@
 import type { WireProtocol } from "./util.js";
-import { normalizeGoogleUserPartOrder, type GooglePart } from "acp-kernel/wire";
+import { normalizeGoogleUserPartOrder, type GoogleContent, type GooglePart } from "acp-kernel/wire";
+
+/** Merge into user tail to preserve strict role alternation; normalize Vertex
+ *  functionResponse-last order without mutating input. */
+export function appendGoogleUserText(contents: GoogleContent[], text: string): GoogleContent[] {
+    const last = contents[contents.length - 1];
+    if (last && (last.role ?? "user") !== "model") {
+        const parts = Array.isArray(last.parts) ? (last.parts as GooglePart[]) : [];
+        return [...contents.slice(0, -1), { ...last, parts: normalizeGoogleUserPartOrder([...parts, { text }]) }];
+    }
+    return [...contents, { role: "user", parts: [{ text }] }];
+}
 
 /** Append `text` as a trailing user turn on the wire's own request body.
  *
@@ -42,15 +53,7 @@ export function appendTrailingUserText(protocol: WireProtocol, body: string | Bu
         // the client's own replay grouping), else start a new one.
         const contents = obj.contents;
         if (!Array.isArray(contents)) return null;
-        const arr = contents as Record<string, unknown>[];
-        const last = arr[arr.length - 1];
-        if (last && typeof last === "object" && last.role === "user" && Array.isArray(last.parts)) {
-            // #3159: plain text after a functionResponse part 400s on Vertex —
-            // keep the canonical order when merging into a tool-result tail.
-            last.parts = normalizeGoogleUserPartOrder([...(last.parts as unknown[]), { text }] as GooglePart[]);
-        } else {
-            arr.push({ role: "user", parts: [{ text }] });
-        }
+        obj.contents = appendGoogleUserText(contents as GoogleContent[], text);
         return JSON.stringify(obj);
     }
     const messages = obj.messages;

@@ -6,6 +6,7 @@ import { composeStreamFilters, createBiliArtifactFilter, createMarkerLineFilter,
 import { degenerateTurnWarning } from "../degenerate-turn.js";
 import { log as loggerLog } from "../logger.js";
 import { normalizeSseLineEndings, finalizeSseLineEndings } from "../sse-util.js";
+import { appendGoogleUserText } from "../wire-body.js";
 
 import type {
     CompressLoopAdapter,
@@ -273,9 +274,11 @@ export function createGoogleAdapter(
 
     return {
         buildRequest(coreMessages, systemPrompt, body) {
-            const contents = coreToGoogle(coreMessages);
+            let contents = coreToGoogle(coreMessages);
             if (notes && notes.length > 0) {
-                for (const text of notes) contents.push({ role: "user", parts: [{ text }] });
+                // The round-2 REQUEST tails user-side (compress call + result),
+                // so the notes must merge rather than open a second user turn.
+                for (const text of notes) contents = appendGoogleUserText(contents, text);
             }
             const rebuilt: Record<string, unknown> = { ...body, contents };
             // The model lives in the URL path, `alt=sse` in the query, and the
