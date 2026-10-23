@@ -1604,7 +1604,7 @@ export function handlePluginStatus(conversationId: string, res: import("node:htt
             res.end(JSON.stringify({ ok: true, conversationId, phase: "pre-first-request", model: pre.model, contextLimit: pre.contextWindow ?? null, runtimeInfo: pre, panel: null, sessionId: null, sessionRevision: null, contextTokens: null, contextTokensSource: "unavailable", contextTokensAt: null, contextGeneration: null }));
             return;
         }
-        res.writeHead(404, { "content-type": "application/json" });
+        res.writeHead(404, jsonHeaders());
         res.end(JSON.stringify({ ok: false, error: fallbackLatest ? "no session with activity since boot — issue a model request or pass the conversation id" : "unknown plugin conversation" }));
         return;
     }
