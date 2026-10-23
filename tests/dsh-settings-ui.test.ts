@@ -1619,17 +1619,16 @@ test("#3862: conversation.view Context tab embeds the web UI session page, polls
         assert.ok(!txt.includes("暂无上下文数据"), "stale-route has its own copy, not the not-yet hint");
         assert.equal(findTag(st, "iframe"), undefined, "never frame a host without the route");
     }
-    {
-        // A concurrently-active sibling/sub-agent session arrives through the
-        // fallback pool: with a known host identity the row is not ours ⇒ no
-        // frame, the not-yet hint stands (no main↔child flicker).
+    // Ownership-gate fixtures mount the tab with the host's session id in
+    // props and answer the exact-id poll with one canned status body.
+    const mountStatusBody = async (body: unknown): Promise<ElementNode> => {
         const hm = await mountClient({
             __BILI__: { origin: ORIGIN },
             open: (_url: string) => {},
             fetch: async (url: string) => {
                 const u = String(url);
                 if (u.endsWith("/bili/origin")) return { ok: true, json: async () => ({ origin: ORIGIN }) };
-                if (u.endsWith(statusUrl)) return { ok: true, json: async () => ({ ok: true, panel: "x", sessionId: "sub-session-id", conversationId: "some-other-conversation", viaFallback: true }) };
+                if (u.endsWith(statusUrl)) return { ok: true, json: async () => body };
                 if (u.endsWith("/__bili/?embed=1")) return htmlOk();
                 throw new Error(`unexpected fetch: ${u}`);
             },
@@ -1638,10 +1637,38 @@ test("#3862: conversation.view Context tab embeds the web UI session page, polls
         hm.resetHooks();
         hm.component();
         await tick();
-        const ht = textOf(hm.component() as ElementNode);
-        assert.ok(ht.includes("暂无上下文数据"), "foreign fallback-resolved session never gets framed");
-        assert.equal(findTag(hm.component() as ElementNode, "iframe"), undefined, "no frame for someone else's session");
+        const tree = hm.component() as ElementNode;
         hm.runCleanups();
+        return tree;
+    };
+    {
+        // A concurrently-active sibling/sub-agent session arrives through the
+        // fallback pool: with a known host identity the row is not ours ⇒ no
+        // frame, the not-yet hint stands (no main↔child flicker). The flag is
+        // spelled the way the proxy actually emits it — handlePluginStatus
+        // writes `fallback: viaFallback || undefined` (src/plugin.ts), so a
+        // client that only understood `viaFallback` would trust every foreign
+        // row and frame it here.
+        const tree = await mountStatusBody({ ok: true, panel: "x", sessionId: "sub-session-id", conversationId: "some-other-conversation", fallback: true });
+        assert.ok(textOf(tree).includes("暂无上下文数据"), "foreign fallback-resolved session never gets framed");
+        assert.equal(findTag(tree, "iframe"), undefined, "no frame for someone else's session");
+    }
+    {
+        // Both directions of the same gate: a fallback-resolved row that IS
+        // this conversation (the pre-first-request case the fallback pool
+        // exists for) still frames — the gate keys on ownership, not on the
+        // flag alone.
+        const tree = await mountStatusBody({ ok: true, panel: "x", sessionId: SESSION_ID, conversationId: HOST_CONVERSATION_ID, fallback: true });
+        const frame = findTag(tree, "iframe");
+        assert.ok(frame !== undefined && frame !== null, "our own fallback-resolved row still frames");
+        assert.ok(frame.props !== null, "frame carries props");
+        assert.equal(frame.props.src, EXPECTED_SRC, "and still points at our session page");
+    }
+    {
+        // Legacy spelling kept for a build that emits the older field name:
+        // the same refusal has to hold for it (alias, not a replacement).
+        const tree = await mountStatusBody({ ok: true, panel: "x", sessionId: "sub-session-id", conversationId: "some-other-conversation", viaFallback: true });
+        assert.equal(findTag(tree, "iframe"), undefined, "the legacy viaFallback spelling is equally refused");
     }
     {
         // The URL answered but not with our contract shape: degrade honestly.
