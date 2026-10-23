@@ -447,6 +447,9 @@ export interface Config {
    *  media payloads are protectable). Must be pure and cheap: it runs once
    *  per message per turn. */
   isMessageProtected?: (msg: CoreMessage) => boolean;
+  /** Internal host classifier for genuine user turns. When set, recent-user
+   * protection also retains adjacent assistant runs around a pure user run. */
+  isUserTurnBoundary?: (msg: CoreMessage) => boolean;
   /** Host-projected VIRTUAL TOOL PATH for messages that are not tool
    *  exchanges (plain-text durable-state carriers, billion-context#2446
    *  family): when set, the host classifier maps a message to a canonical
