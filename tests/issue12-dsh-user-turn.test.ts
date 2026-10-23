@@ -5,7 +5,7 @@ import {
   durableMessageToolPaths,
   withDurableProtection,
 } from "../src/durable-message-guards.js";
-import { effectiveConfig, storeEffectiveConfig, type Session } from "../src/session.js";
+import { createSession, effectiveConfig, storeEffectiveConfig } from "../src/session.js";
 import { defaultConfig } from "../kernel/src/config.js";
 import type { CoreMessage } from "acp-kernel";
 
@@ -47,7 +47,9 @@ test("boundary classifier is installed only on the DSH lane", () => {
 
 test("effective config restores classifier without persisting functions", () => {
   const base = defaultConfig(100000);
-  const session = { metadata: { pluginAgent: "dsh", effectiveConfig: structuredClone(base) } } as Session;
+  const session = createSession("issue12-config-rehydrate");
+  session.metadata.pluginAgent = "dsh";
+  session.metadata.effectiveConfig = structuredClone(base);
   const before = structuredClone(session.metadata);
   const resolved = effectiveConfig(session, base);
   assert.equal(resolved.isUserTurnBoundary, dshUserTurnBoundary);
