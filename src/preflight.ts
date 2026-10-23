@@ -585,7 +585,7 @@ export function summaryPayload(protocol: PreflightProtocol, model: string, syste
         // generationConfig (there is no top-level max_tokens).
         const payload: Record<string, unknown> = { contents: [{ role: "user", parts: [{ text: content }] }] };
         if (system) payload.systemInstruction = { parts: [{ text: system }] };
-        if (includeMaxOutputTokens) payload.generationConfig = { maxOutputTokens: MAX_SUMMARY_OUTPUT_TOKENS };
+        if (includeMaxOutputTokens) payload.generationConfig = { maxOutputTokens };
         return payload;
     }
     // #488: codex relays reject Responses calls without store:false ("Store must be set to false").
