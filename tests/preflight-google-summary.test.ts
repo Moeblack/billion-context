@@ -56,6 +56,8 @@ function makeGeminiUpstream(calls: Call[]): http.Server {
             calls.push({ summary: isSummary, raw });
             res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
             if (isSummary) {
+                const body = JSON.parse(raw) as { generationConfig?: { maxOutputTokens?: number } };
+                assert.ok((body.generationConfig?.maxOutputTokens ?? Infinity) <= 8192, "Gemini summary must respect the registered output ceiling");
                 // Thinking first, then the summary text — the extractor must
                 // take the text part and skip the reasoning part.
                 res.write(sse(geminiText("let me compress this segment", true)));
@@ -79,7 +81,7 @@ function longGeminiContents() {
 
 function startProxy(upstreamPort: number): Promise<http.Server> {
     _setStoreForTest(new SessionStore({ enabled: false }));
-    setRegistryForTest({});
+    setRegistryForTest({ "google/gemini-test": { limit: { context: 10_000, output: 8192 } } });
     return startServer({
         port: 0,
         host: "127.0.0.1",

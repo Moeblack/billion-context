@@ -4,7 +4,7 @@ import { once } from "node:events";
 import { randomUUID } from "node:crypto";
 import { afterEach, test } from "node:test";
 import { createCore, defaultConfig, defaultPrompts, type CoreMessage } from "acp-kernel";
-import { preflightCompress, type PreflightDeps } from "../src/preflight.ts";
+import { preflightCompress, summaryPayload, type PreflightDeps } from "../src/preflight.ts";
 import { _liveUpstreamTimersForTest, _resetFetchUtilForTest } from "../src/fetch-util.ts";
 import { getSession } from "../src/session.ts";
 import { SessionStore, _setStoreForTest } from "../src/persist.ts";
@@ -14,6 +14,20 @@ process.env.NODE_ENV = "test";
 _setStoreForTest(new SessionStore({ enabled: false }));
 
 const SUMMARY = "SUMMARY: keep the task goal, exact acceptance criteria and next step; the repeated fixture output is disposable.";
+
+test("Gemini summary output respects the model ceiling and shared context budget", () => {
+    setRegistryForTest({
+        "google/gemini-2.0-flash": { limit: { context: 1048576, output: 8192 } },
+    });
+    const capped = summaryPayload("google", "gemini-2.0-flash", "Summarize", "Conversation", false, true);
+    assert.deepEqual(capped.generationConfig, { maxOutputTokens: 8192 });
+    const google = summaryPayload("google", "unknown-model", "Summarize", "Conversation", false, true, undefined, 4096);
+    const openai = summaryPayload("openai", "unknown-model", "Summarize", "Conversation", false, true, undefined, 4096);
+    assert.deepEqual(google.generationConfig, { maxOutputTokens: openai.max_tokens });
+    assert.ok(Number(openai.max_tokens) < 4096);
+    assert.deepEqual(summaryPayload("google", "unknown-model", "", "Conversation", false, true).generationConfig, { maxOutputTokens: 32768 });
+    assert.equal(summaryPayload("google", "gemini-2.0-flash", "", "Conversation", false, false).generationConfig, undefined);
+});
 
 afterEach(() => {
     assert.equal(_liveUpstreamTimersForTest(), 0, "each attempt releases its upstream idle timer");
