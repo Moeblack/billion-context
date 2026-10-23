@@ -419,6 +419,19 @@ test("storage engine: corrupt index.db degrades to legacy-only instead of bricki
         // Writes must keep working (legacy path) — no throw, file refreshed.
         await store2.writeNow(reloaded);
         store2.closeQuietly();
+
+        // Regression (#4347 root cause): the corrupt-header open must not
+        // LEAK its sqlite handle — the #2771 fallback tells operators to
+        // delete the file, and Windows refuses to unlink a file this process
+        // still holds (every windows CI leg deterministically burned the
+        // tmp-rm retry ladder here). /proc/self/fd makes the leak visible on
+        // Linux too, where unlink-open would otherwise mask it.
+        if (process.platform === "linux") {
+            const held = fs.readdirSync("/proc/self/fd")
+                .map((fd) => { try { return fs.readlinkSync(`/proc/self/fd/${fd}`); } catch { return ""; } })
+                .filter((t) => t.startsWith(dir));
+            assert.equal(held.length, 0, `open handle(s) into the corrupt index dir after close: ${held.join(", ")}`);
+        }
     } finally {
         if (prev === undefined) delete process.env.BILI_STORAGE_UNIFIED;
         else process.env.BILI_STORAGE_UNIFIED = prev;
