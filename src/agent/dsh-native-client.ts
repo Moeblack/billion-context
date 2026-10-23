@@ -166,13 +166,16 @@ type CtxStatus = {
 function parseCtxStatus(raw: unknown): CtxStatus | undefined {
     const o = raw !== null && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
     if (o === null || typeof o.ok !== "boolean") return undefined;
+    // `fallback` is the wire name handlePluginStatus actually emits; the
+    // `viaFallback` alias keeps older builds readable.
+    const viaFallback = o.fallback === true || o.viaFallback === true;
     return {
         ok: o.ok,
         phase: typeof o.phase === "string" ? o.phase : undefined,
         panelPresent: o.panel !== undefined,
         sessionId: typeof o.sessionId === "string" && o.sessionId.length > 0 ? o.sessionId : null,
         conversationId: typeof o.conversationId === "string" && o.conversationId.length > 0 ? o.conversationId : null,
-        viaFallback: o.viaFallback === true,
+        viaFallback,
     };
 }
 
