@@ -172,6 +172,15 @@ function classifiesDurable(patterns: readonly string[] | undefined): boolean {
     return (patterns ?? []).some((p) => p.toLowerCase().split("/")[0] === "durable");
 }
 
+export function dshUserTurnBoundary(msg: CoreMessage): boolean {
+    if (msg.role !== "user" || msg.contentType === "tool-result") return false;
+    const text = (msg.text ?? "").trim();
+    if (text.startsWith("Current runtime context") || text.startsWith("The approval policy changed from")) return false;
+    if (/^Time sampled while preparing turn \d+, step \d+: [^\n]+\nBrowser time zone for this request:/.test(text)) return false;
+    if (text.startsWith("\x3csystem-reminder\x3e") && text.endsWith("\x3c/system-reminder\x3e") && dshDurableToolPath(msg)) return false;
+    return true;
+}
+
 /** Attach a lane classifier to a kernel Config and default the durable
  *  policy. Default = `durable/*` latest-per-identity protection in
  *  protectedLatestTools: every carrier keeps exactly its newest instance
@@ -184,6 +193,7 @@ function classifiesDurable(patterns: readonly string[] | undefined): boolean {
  *  (whole-identity takeover: one durable pattern anywhere takes over the
  *  whole durable policy — no per-carrier merging). */
 export function withDurableProtection(config: Config, classifier: DurableMessageClassifier): Config {
+    if (classifier === durableMessageToolPaths.dsh) config = { ...config, isUserTurnBoundary: dshUserTurnBoundary };
     const classified =
         classifiesDurable(config.protectedTools) || classifiesDurable(config.protectedLatestTools);
     if (classified) {

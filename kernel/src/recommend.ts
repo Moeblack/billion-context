@@ -146,8 +146,28 @@ export function computeProtectedRefs(
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i]!;
       if (msg.role !== "user" || isSyntheticOrPruned(msg, covered)) continue;
+      if (config.isUserTurnBoundary && !config.isUserTurnBoundary(msg)) continue;
+      let start = i;
+      let end = i;
+      if (config.isUserTurnBoundary) {
+        while (start > 0 && messages[start - 1]!.role !== "assistant") start--;
+        while (end + 1 < messages.length && messages[end + 1]!.role !== "assistant") end++;
+        if (messages.slice(start, end + 1).some((m) => m.role === "tool" || m.contentType === "tool-result")) continue;
+      }
       const ref = state.messageRefs.byRaw[msg.id];
       if (ref && ref !== "BLOCKED") result.add(ref);
+      if (config.isUserTurnBoundary) {
+        // Both separators are needed: either missing run merges user text into
+        // an adjacent functionResponse content on the Google wire.
+        while (start > 0 && messages[start - 1]!.role === "assistant") start--;
+        while (end + 1 < messages.length && messages[end + 1]!.role === "assistant") end++;
+        for (let j = start; j <= end; j++) {
+          const boundary = messages[j]!;
+          if (isSyntheticOrPruned(boundary, covered)) continue;
+          const boundaryRef = state.messageRefs.byRaw[boundary.id];
+          if (boundaryRef && boundaryRef !== "BLOCKED") result.add(boundaryRef);
+        }
+      }
       break;
     }
   }
