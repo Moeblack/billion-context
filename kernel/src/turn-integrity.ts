@@ -1,4 +1,4 @@
-import type { CoreMessage } from "./types.js";
+import { thinkingSignatureOf, type CoreMessage } from "./types.js";
 
 function isAssistantAct(msg: CoreMessage): boolean {
   return (
@@ -145,12 +145,19 @@ export function computeIntegrityWithdrawals(
   const handledPairs = new Set<string>();
 
   const reasoningIds = new Set<string>();
+  const signedIds = new Set<string>();
   const callIds = new Set<string>();
   const callIdByMessageId = new Map<string, string>();
   const resultIdByCallId = new Map<string, string>();
   for (const m of messages) {
     if (!m.id) continue;
     if (m.contentType === "reasoning") reasoningIds.add(m.id);
+    // Any core carrying an upstream attestation is signed content — a Gemini
+    // functionCall part carries its own thoughtSignature, so restricting this
+    // to reasoning leaves exactly the tool-calls the provider verifies unsigned.
+    if (thinkingSignatureOf(m)) {
+      signedIds.add(m.id);
+    }
     if (m.role === "assistant" && m.contentType === "tool-call") {
       callIds.add(m.id);
       if (typeof m.toolCallId === "string") {
@@ -175,11 +182,21 @@ export function computeIntegrityWithdrawals(
       const foldHasReasoning = group.some(
         (id) => remaining.has(id) && reasoningIds.has(id),
       );
-      if (!foldHasReasoning) continue;
       const keptHasCall = group.some(
         (id) => !remaining.has(id) && callIds.has(id),
       );
-      if (!keptHasCall) continue;
+      // INV3 — a signed block is an attested fragment of a real response.
+      // Halving it does not "leave a valid stream": an orphaned Anthropic
+      // thinking block gets merged ahead of the next turn's by coreToAnthropic
+      // ("`thinking` or `redacted_thinking` blocks in the latest assistant
+      // message cannot be modified"), and a Gemini functionCall that lost the
+      // signature it was issued with fails with "Function call is missing a
+      // thought_signature". Signed groups fold all-or-nothing.
+      const signedSplit =
+        group.some((id) => signedIds.has(id)) &&
+        group.some((id) => remaining.has(id)) &&
+        group.some((id) => !remaining.has(id));
+      if (!(foldHasReasoning && keptHasCall) && !signedSplit) continue;
       handledTurns.add(g);
       for (const id of group) {
         remaining.delete(id);

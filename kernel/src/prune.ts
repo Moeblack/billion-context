@@ -1,5 +1,9 @@
 import { activeBlocks, coveredMessageIds } from "./state.js";
-import type { CompressionState, CoreMessage } from "./types.js";
+import {
+  thinkingSignatureOf,
+  type CompressionState,
+  type CoreMessage,
+} from "./types.js";
 
 export const SUMMARY_HEADER = "[Compressed conversation section]";
 
@@ -582,10 +586,18 @@ function stripOrphanedReasoning(messages: CoreMessage[]): CoreMessage[] {
   for (let i = 0; i < messages.length; i++) {
     if (drop.has(i)) continue;
     if (messages[i]!.contentType !== "reasoning") continue;
+    // A signed reasoning only pairs with the companion of its own wire
+    // message; crossing that boundary produces an orphan thinking that the
+    // next merge glues in front of the following turn's thinking.
+    const head = messages[i]!;
+    const wire = thinkingSignatureOf(head) ? wireIndexOf(head) : undefined;
+    const sameWire = (m: CoreMessage): boolean =>
+      wire === undefined || wireIndexOf(m) === undefined || wireIndexOf(m) === wire;
     let j = i;
     while (
       j + 1 < messages.length &&
-      messages[j + 1]!.contentType === "reasoning"
+      messages[j + 1]!.contentType === "reasoning" &&
+      sameWire(messages[j + 1]!)
     ) {
       j++;
     }
@@ -594,7 +606,8 @@ function stripOrphanedReasoning(messages: CoreMessage[]): CoreMessage[] {
       companion !== undefined &&
       companion.role === "assistant" &&
       (companion.contentType === "text" ||
-        companion.contentType === "tool-call");
+        companion.contentType === "tool-call") &&
+      sameWire(companion);
     if (!hasCompanion) {
       for (let k = i; k <= j; k++) drop.add(k);
     }

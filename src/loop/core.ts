@@ -1235,7 +1235,11 @@ export async function* runCompressLoop(
                 let sigIdx = 0;
                 for (const part of roundParts) {
                     if (part.kind === "reasoning") {
-                        if (part.text.length === 0 || (requiresThinkingSignature && part.signature.length === 0)) continue;
+                        // A signature-only reasoning part is real content: the upstream carries the
+                        // whole thought inside it. Dropping it here silently redacts a
+                        // block Anthropic/Google require to round-trip verbatim.
+                        if (requiresThinkingSignature && part.signature.length === 0) continue;
+                        if (part.text.length === 0 && part.signature.length === 0) continue;
                         reasoningIdx += 1;
                         const reasoningMsg: BiliMessage = {
                             id: reasoningIdx === 1 ? `acp_loop_r${round}_reasoning` : `acp_loop_r${round}_reasoning_${reasoningIdx}`,

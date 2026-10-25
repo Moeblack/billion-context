@@ -215,8 +215,8 @@ export function judgeInboundOutbound(
 
   // Carrier pinning (I2): a non-carrier element sitting before the fold carrier
   // that exceeds the matched frozen prefix means the anchor drifted.
-  if (folded && sumIdx > matched) {
-    for (let k = matched; k < sumIdx; k++) {
+  if (folded && sumIdx > j) {
+    for (let k = j; k < sumIdx; k++) {
       const x = exit[k];
       if (!isCarrier(x) && !isReasoning(x)) {
         violations.push({ kind: "carrier-drift", index: -1, detail: `element before fold carrier at outbound[${k}]: ${fp(x)}` });

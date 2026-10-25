@@ -687,3 +687,45 @@ export interface StatusReport {
   tokensCompressed: number;
   breakdown: Record<string, number>;
 }
+
+/**
+ * Upstream thinking signature of a reasoning core.
+ *
+ * The wire adapters attach it to the core at runtime (see `anthropicToCore`);
+ * it deliberately stays out of the public `CoreMessage` contract because most
+ * hosts never carry one. Read it through this guard rather than asserting the
+ * shape at each call site.
+ */
+export function thinkingSignatureOf(m: CoreMessage): string | undefined {
+  const carrier = m as CoreMessage & {
+    thinkingSignature?: unknown;
+    googleThoughtSignature?: unknown;
+    rawGoogleParts?: unknown;
+  };
+  // Anthropic: the whole thought travels inside the signature.
+  if (
+    typeof carrier.thinkingSignature === "string" &&
+    carrier.thinkingSignature.length > 0
+  ) {
+    return carrier.thinkingSignature;
+  }
+  // Google/Gemini: `thoughtSignature` rides on the wire part and is mirrored
+  // onto the core as `googleThoughtSignature`. It attaches to functionCall and
+  // text parts too, not only to thought parts — so a signed tool-call is
+  // attested content like any signed reasoning block.
+  if (
+    typeof carrier.googleThoughtSignature === "string" &&
+    carrier.googleThoughtSignature.length > 0
+  ) {
+    return carrier.googleThoughtSignature;
+  }
+  if (Array.isArray(carrier.rawGoogleParts)) {
+    for (const part of carrier.rawGoogleParts) {
+      if (part && typeof part === "object") {
+        const sig = (part as { thoughtSignature?: unknown }).thoughtSignature;
+        if (typeof sig === "string" && sig.length > 0) return sig;
+      }
+    }
+  }
+  return undefined;
+}

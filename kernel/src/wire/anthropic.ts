@@ -423,13 +423,22 @@ export function coreToAnthropic(
           ...cc(m.id),
         });
         break;
-      case "reasoning":
+      case "reasoning": {
+        // A `thinking` block leads its wire message; Anthropic rejects one
+        // that follows text/tool_use in the same message. Folding the user turn
+        // between two assistant messages makes them adjacent here, so they get
+        // merged — start a new message instead of appending.
+        if (current.blocks.some((b) => b.type !== "thinking")) {
+          flush();
+        }
+        if (!current) current = { role: "assistant", blocks: [] };
         current.blocks.push({
           type: "thinking",
           thinking: m.text ?? "",
           ...(m.thinkingSignature ? { signature: m.thinkingSignature } : {}),
         });
         break;
+      }
     }
   }
   flush();
